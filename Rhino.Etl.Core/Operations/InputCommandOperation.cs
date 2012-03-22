@@ -46,7 +46,7 @@ namespace Rhino.Etl.Core.Operations
                     PrepareCommand(currentCommand);
                     using (IDataReader reader = currentCommand.ExecuteReader())
                     {
-                        while (reader.Read())
+                        while (ShouldContinue() && reader.Read())
                         {
                             yield return CreateRowFromReader(reader);
                         }
@@ -69,5 +69,15 @@ namespace Rhino.Etl.Core.Operations
         /// </summary>
         /// <param name="cmd">The command.</param>
         protected abstract void PrepareCommand(IDbCommand cmd);
+
+        /// <summary>
+        /// Indicates if reads will continue to be attempt.  Override
+        /// to allow interrupting the read.
+        /// </summary>
+        /// <returns>whether or not the read operation will try to continue</returns>
+        protected virtual bool ShouldContinue()
+        {
+            return true;
+        }
     }
 }

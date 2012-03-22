@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Common.Logging.Configuration;
 using Rhino.Etl.Core.Infrastructure;
 
 namespace Rhino.Etl.Tests.LoadTest
@@ -6,6 +8,7 @@ namespace Rhino.Etl.Tests.LoadTest
     using Core;
     using Xunit;
     using Rhino.Etl.Core.Operations;
+    using System;
 
     /// <summary>
     /// This fixture is here to verify that we can handle large amount of data
@@ -74,6 +77,83 @@ namespace Rhino.Etl.Tests.LoadTest
             }
 
             AssertUpdatedAllRows();
+        }
+
+        [Fact]
+        public void CanCancelLoadGracefully()
+        {
+            using (var process = new ProcessCountingReadsBeforeCancel())
+            {
+                process.Execute();
+
+                Assert.True(process.Count < expectedCount / 4);
+            }
+        }
+
+        public class ProcessCountingReadsBeforeCancel : EtlProcess
+        {
+            public int Count;
+
+            protected override void Initialize()
+            {
+                bool cancelled = false;
+                var reader = new CancellableReader();
+                Register(reader);
+                Register(new TriggersAfter3(() => reader.Continue = false));
+                Register(new ReportsCount(v => Count = v));
+            }
+        }
+
+        public class CancellableReader : ReadUsers
+        {
+            public bool Continue = true;
+
+            protected override bool ShouldContinue()
+            {
+                return Continue;
+            }
+        }
+
+        public class TriggersAfter3 : AbstractOperation
+        {
+            readonly Action _action;
+            public int Count = 0;
+
+            public TriggersAfter3(Action action)
+            {
+                _action = action;
+            }
+
+            public override IEnumerable<Row> Execute(IEnumerable<Row> rows)
+            {
+                foreach(var row in rows)
+                {
+                    Count++;
+                    yield return row;
+                    if (Count == 3)
+                        _action();
+                }
+            }
+        }
+
+        public class ReportsCount : AbstractOperation
+        {
+            int _count;
+            readonly Action<int> _listener;
+
+            public ReportsCount(Action<int> listener)
+            {
+                _listener = listener;
+            }
+
+            public override IEnumerable<Row> Execute(IEnumerable<Row> rows)
+            {
+                foreach(var row in rows)
+                {
+                    _listener(++_count);
+                    yield return row;
+                }
+            }
         }
     }
 }
